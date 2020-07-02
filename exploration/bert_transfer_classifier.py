@@ -56,29 +56,35 @@ class SST2Dataset(Dataset):
 class BERTTransferClassifier(nn.Module):
     def __init__(self, bert_model, n_classes, d_model, d_hidden=2048):
         super(BERTTransferClassifier, self).__init__()
-        self.bert_model = bert_model
+        self.basemodel = bert_model
+        self.dropout1 = nn.Dropout(0.1)
         self.ffn1 = nn.Linear( d_model, d_hidden )
         self.relu = nn.ReLU()
+        self.dropout2 = nn.Dropout(0.2)
         self.ffn2 = nn.Linear( d_hidden, n_classes )
         self.bert_training = False
     
-    def train_bert(self):
+    def train_base(self):
         self.bert_training = True
     
-    def freeze_bert(self):
+    def freeze_base(self):
         self.bert_training = False
         
     def forward(self, x, attention_mask):
         if self.bert_training:
-            x = self.bert_model(x, attention_mask)
+            x = self.basemodel(x, attention_mask)[0]
         else:
             with torch.no_grad():
-                x = self.bert_model(x, attention_mask)
+                x = self.basemodel(x, attention_mask)[0]
+        
+        x = self.dropout1(x)
+        
         # extract the features from the CLS part only
-        x = x[0][:,0,:]
+        x = x[:,0,:]
 
         x = self.ffn1(x)
         x = self.relu(x)
+        x = self.dropout2(x)
         logits = self.ffn2(x)
         return logits
 
@@ -122,7 +128,7 @@ def train(model, n_epochs, train_dataloader, dev_dataloader, device, optimizer, 
         logger.info('Val loss: %.3f' % (total_val_loss.item()/total_val_steps) )
 
 if __name__ == '__main__':
-    context = 'BERT-SST2-transfer'
+    context = 'BERT-SST2-transfer-dropout'
     logger = make_logger('HuggingFace', 'logs/', context)
     logger.info('Running transfer learning experiments on SST2 dataset, currently on context: '.format(context))
 
@@ -204,21 +210,21 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    n_warmup_epochs = 5
+    n_warmup_epochs = 3
     n_epochs = 2
 
-    model.freeze_bert()
+    model.freeze_base()
     logger.info('Warming up model by training classifier layer first...')
 
     train(model, n_warmup_epochs, train_dataloader, dev_dataloader, device, optimizer, criterion, logger)
 
     logger.info('Warmed up. Now training the basemodel jointly...')
     # Let backprop train the base model inside
-    model.train_bert()
+    model.train_base()
 
     # Use a fresh optimizer with a much smaller learning rate
     del optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-6)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
 
     train(model, n_epochs, train_dataloader, dev_dataloader, device, optimizer, criterion, logger)
 
