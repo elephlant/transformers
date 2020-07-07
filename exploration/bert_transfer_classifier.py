@@ -54,13 +54,13 @@ class SST2Dataset(Dataset):
         return {'features': features, 'labels': labels, 'masks': masks}
 
 class BERTTransferClassifier(nn.Module):
-    def __init__(self, bert_model, n_classes, d_model, d_hidden=2048):
+    def __init__(self, bert_model, n_classes, d_model, d_hidden=2048, dropout_p=0.1):
         super(BERTTransferClassifier, self).__init__()
         self.basemodel = bert_model
-        self.dropout1 = nn.Dropout(0.1)
+        self.dropout1 = nn.Dropout(dropout_p)
         self.ffn1 = nn.Linear( d_model, d_hidden )
         self.relu = nn.ReLU()
-        self.dropout2 = nn.Dropout(0.2)
+        self.dropout2 = nn.Dropout(dropout_p)
         self.ffn2 = nn.Linear( d_hidden, n_classes )
         self.bert_training = False
     
@@ -210,7 +210,7 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    n_warmup_epochs = 3
+    n_warmup_epochs = 0
     n_epochs = 2
 
     model.freeze_base()
